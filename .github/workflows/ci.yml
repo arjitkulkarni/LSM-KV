@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # gcc + clang, Release and Debug (ASan + UBSan).
+  build-test:
+    name: ${{ matrix.compiler }} / ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        config: [Release, Debug-ASan-UBSan]
+        include:
+          - compiler: gcc
+            cxx: g++-14
+          - compiler: clang
+            cxx: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-14 clang-18
+      - name: Configure
+        run: |
+          if [ "${{ matrix.config }}" = "Release" ]; then
+            BT=Release; SAN=""
+          else
+            BT=Debug; SAN="address;undefined"
+          fi
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_BUILD_TYPE=$BT \
+            -DLSMKV_SANITIZE="$SAN" \
+            -DLSMKV_WERROR=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Lower ASLR entropy for sanitizers (runner kernels default to 32 bits)
+        if: matrix.config != 'Release'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure --parallel 4 --timeout 900
+      - name: Crash matrix (smoke, 25 iterations)
+        if: matrix.config == 'Release'
+        run: python3 tools/crash_matrix.py --build build --iterations 25 --out build/crash_smoke.json
+
+  # ThreadSanitizer on its own: it is incompatible with ASan and needs the
+  # concurrency tests to run long enough to interleave.
+  tsan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang-18
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLSMKV_SANITIZE=thread \
+            -DLSMKV_BUILD_BENCH=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Lower ASLR entropy (TSan cannot map its shadow memory otherwise)
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Test under TSan (3 rounds)
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: |
+          for i in 1 2 3; do
+            ctest --test-dir build --output-on-failure --parallel 2 --timeout 1800
+          done
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: clang-format --dry-run
+        run: |
+          git ls-files '*.cc' '*.h' | xargs clang-format-18 --dry-run --Werror
+
+  tidy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build clang-18 clang-tidy-18
+      - name: Configure (compile_commands.json)
+        run: cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DLSMKV_BUILD_TESTS=OFF
+      - name: clang-tidy
+        run: |
+          git ls-files 'src/*.cc' | grep -v env_windows | \
+            xargs -P 4 -n 4 clang-tidy-18 -p build --quiet
+
+  windows-mingw:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLSMKV_WERROR=ON
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure --parallel 4 --timeout 900

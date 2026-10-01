@@ -1,0 +1,22 @@
+# Build trees
+build/
+cmake-build-*/
+out/
+
+# Scratch databases created by tools and benchmarks
+bench-db/
+bloom-sweep-db/
+micro-bench-tmp/
+*.dbtmp
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/

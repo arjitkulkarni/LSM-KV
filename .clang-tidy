@@ -1,0 +1,26 @@
+---
+# Checks that catch real bugs in a storage engine, not style bikeshedding.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-branch-clone,
+  concurrency-*,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-virtual-class-destructor,
+  misc-unused-using-decls,
+  misc-redundant-expression,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-make-unique,
+  modernize-make-shared,
+  performance-*,
+  -performance-enum-size,
+  readability-container-size-empty,
+  readability-redundant-smartptr-get,
+  readability-misleading-indentation
+WarningsAsErrors: ''
+HeaderFilterRegex: '(include/lsmkv|src)/.*'
+FormatStyle: file
