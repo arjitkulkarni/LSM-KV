@@ -1,0 +1,12 @@
+# Scrapes the /metrics endpoint that lsmkv-bench (and any embedding
+# process) exposes with --metrics_port.
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: lsmkv
+    static_configs:
+      # host.docker.internal reaches the host from Docker Desktop; on Linux
+      # the compose file maps it with extra_hosts: host-gateway.
+      - targets: ["host.docker.internal:9464"]

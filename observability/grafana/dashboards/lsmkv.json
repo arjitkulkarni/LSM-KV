@@ -1,0 +1,182 @@
+{
+  "title": "LSM-KV",
+  "uid": "lsmkv-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "tags": ["lsmkv", "storage"],
+  "panels": [
+    {
+      "type": "row", "title": "Traffic & latency", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries", "title": "Operations / s by type",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (op) (rate(lsmkv_ops_total[30s]))", "legendFormat": "{{op}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Latency p50 / p99 / p99.9",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le, op) (rate(lsmkv_op_latency_seconds_bucket[1m])))", "legendFormat": "p50 {{op}}" },
+        { "refId": "B", "expr": "histogram_quantile(0.99, sum by (le, op) (rate(lsmkv_op_latency_seconds_bucket[1m])))", "legendFormat": "p99 {{op}}" },
+        { "refId": "C", "expr": "histogram_quantile(0.999, sum by (le, op) (rate(lsmkv_op_latency_seconds_bucket[1m])))", "legendFormat": "p99.9 {{op}}" }
+      ]
+    },
+    {
+      "type": "row", "title": "Write path", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+    {
+      "type": "timeseries", "title": "Write stalls / s by cause",
+      "description": "Hard stalls (memtable_full, l0_stop) and 1 ms soft slowdowns. A rising line here is the first symptom of compaction falling behind.",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(lsmkv_write_stalls_total[30s]))", "legendFormat": "{{reason}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Time stalled (writer-seconds per second)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_write_stall_micros_total[30s]) / 1e6", "legendFormat": "stalled" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Group commit: mean writers per WAL record",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_wal_group_commit_writers_total[30s]) / rate(lsmkv_wal_group_commits_total[30s])", "legendFormat": "writers / group" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "WAL fsync latency",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, rate(lsmkv_wal_fsync_seconds_bucket[1m]))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.99, rate(lsmkv_wal_fsync_seconds_bucket[1m]))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Commit queue wait vs WAL append (p99)",
+      "description": "Diagnosis panel for the Day-10 performance pass: if queue wait >> WAL append, the pipeline is bound by hand-off, not by I/O.",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, rate(lsmkv_write_queue_wait_seconds_bucket[1m]))", "legendFormat": "queue wait p99" },
+        { "refId": "B", "expr": "histogram_quantile(0.99, rate(lsmkv_wal_append_seconds_bucket[1m]))", "legendFormat": "WAL append p99" }
+      ]
+    },
+    {
+      "type": "stat", "title": "Write amplification",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "x", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "lsmkv_write_amplification", "legendFormat": "WA" }
+      ]
+    },
+    {
+      "type": "row", "title": "LSM shape & compaction", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+    {
+      "type": "timeseries", "title": "Compaction backlog (estimated pending bytes)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "lsmkv_compaction_pending_bytes", "legendFormat": "pending" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "SSTables per level",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "lsmkv_level_files", "legendFormat": "L{{level}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Memtable bytes / immutable memtables",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [
+        { "matcher": { "id": "byName", "options": "immutable" }, "properties": [ { "id": "unit", "value": "short" }, { "id": "custom.axisPlacement", "value": "right" } ] }
+      ] },
+      "targets": [
+        { "refId": "A", "expr": "lsmkv_memtable_bytes", "legendFormat": "active" },
+        { "refId": "B", "expr": "lsmkv_immutable_memtables", "legendFormat": "immutable" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Compaction bytes written / s by output level",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_compaction_bytes_written_total[1m])", "legendFormat": "write L{{level}}" },
+        { "refId": "B", "expr": "rate(lsmkv_flush_bytes_written_total[1m])", "legendFormat": "flush -> L0" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Compaction bytes read / s by input level",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_compaction_bytes_read_total[1m])", "legendFormat": "read L{{level}}" }
+      ]
+    },
+    {
+      "type": "row", "title": "Read path", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 }
+    },
+    {
+      "type": "timeseries", "title": "Block cache hit ratio",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_block_cache_hits_total[1m]) / (rate(lsmkv_block_cache_hits_total[1m]) + rate(lsmkv_block_cache_misses_total[1m]))", "legendFormat": "hit ratio" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Bloom filter: share of probes that skipped a table",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_bloom_useful_total[1m]) / rate(lsmkv_bloom_checks_total[1m])", "legendFormat": "useful" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "SSTable data-block reads / s",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(lsmkv_sst_block_reads_total[30s])", "legendFormat": "block reads" },
+        { "refId": "B", "expr": "rate(lsmkv_get_misses_total[30s])", "legendFormat": "get misses" }
+      ]
+    }
+  ]
+}

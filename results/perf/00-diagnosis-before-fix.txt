@@ -1,0 +1,26 @@
+# Harness output that led to the Day-10 fix (captured before any change).
+# Build: GCC 14.2 -O2 (RelWithDebInfo/Release), Windows 11, Ryzen 9 8940HX, NVMe.
+# Command per row: lsmkv-bench --workload=load --records=300000 --threads=T --reps=1
+
+== load threads=1
+  rep 1:     256706 ops/s   p50     3.41 us   p99     9.02 us   p99.9     50.94 us   (load 256706 ops/s, errors 0)
+         write path: mean group 1.00 writers | queue wait p50 0.0 us p99 0.1 us | WAL append p50 2.3 us p99 5.8 us
+== load threads=2
+  rep 1:     186382 ops/s   p50    10.94 us   p99    39.94 us   p99.9    112.64 us   (load 186382 ops/s, errors 0)
+         write path: mean group 1.33 writers | queue wait p50 5.5 us p99 25.6 us | WAL append p50 2.6 us p99 15.6 us
+== load threads=4
+  rep 1:     169830 ops/s   p50    21.38 us   p99    68.61 us   p99.9    162.81 us   (load 169830 ops/s, errors 0)
+         write path: mean group 2.19 writers | queue wait p50 15.6 us p99 58.4 us | WAL append p50 2.9 us p99 24.1 us
+== load threads=8
+  rep 1:     147725 ops/s   p50    48.64 us   p99   148.48 us   p99.9    342.01 us   (load 147725 ops/s, errors 0)
+         write path: mean group 3.44 writers | queue wait p50 41.0 us p99 143.4 us | WAL append p50 3.5 us p99 25.1 us
+== load threads=16
+  rep 1:     106567 ops/s   p50   133.12 us   p99   438.27 us   p99.9    917.50 us   (load 106567 ops/s, errors 0)
+         write path: mean group 5.79 writers | queue wait p50 122.9 us p99 426.0 us | WAL append p50 5.4 us p99 45.1 us
+
+# Reading: the serialized work per commit group (WAL append) is ~3.5 us at 8
+# threads, but a group cycle takes 3.44 writers / 147.7k ops/s = ~23 us. The
+# other ~20 us is the leader hand-off: every follower and the next leader sleep
+# on a condition variable and pay an OS wake-up, then re-acquire the DB mutex.
+# Memtable sharding (1 vs 8 shards) moved throughput by < 10% at every thread
+# count -- the memtable mutex was not the bottleneck.
